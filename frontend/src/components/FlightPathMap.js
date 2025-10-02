@@ -203,16 +203,22 @@ const FlightPathMap = ({ flight, onSeatRecommendation }) => {
     const current = flightPath[index];
     const next = flightPath[nextIndex];
 
-    const angle = Math.atan2(next[1] - current[1], next[0] - current[0]) * 180 / Math.PI;
-    return angle + 90;
+    const deltaLat = next[0] - current[0];
+    const deltaLng = next[1] - current[1];
+
+    const angle = Math.atan2(deltaLng, deltaLat) * 180 / Math.PI;
+    return angle;
   };
 
-  const planeIcon = new DivIcon({
-    className: 'plane-icon',
-    html: `<div style="transform: rotate(${calculatePlaneRotation()}deg); font-size: 32px; transition: transform 0.1s linear;">✈️</div>`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16]
-  });
+  const getPlaneIcon = () => {
+    const rotation = calculatePlaneRotation();
+    return new DivIcon({
+      className: 'plane-icon',
+      html: `<div style="transform: rotate(${rotation}deg); font-size: 32px; transition: transform 0.1s linear;">✈️</div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+  };
 
   const sunIcon = new DivIcon({
     className: 'sun-icon',
@@ -520,7 +526,8 @@ const FlightPathMap = ({ flight, onSeatRecommendation }) => {
             {getCurrentPlanePosition() && (
               <Marker
                 position={getCurrentPlanePosition()}
-                icon={planeIcon}
+                icon={getPlaneIcon()}
+                key={`plane-${planePosition}`}
               >
                 <Popup>
                   <div className="text-center">

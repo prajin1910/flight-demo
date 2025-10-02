@@ -85,7 +85,6 @@ const SeatSelection = () => {
   // Handle seat recommendations from flight path analysis
   const handleSeatRecommendation = useCallback((recommendations) => {
     setSeatRecommendations(recommendations);
-    toast.success('Seat recommendations updated based on sun position!');
   }, []);
 
   useEffect(() => {
@@ -421,6 +420,7 @@ const SeatSelection = () => {
                               </button>
                               
                               {isAisle && <div className="w-4"></div>}
+                              }
                             </React.Fragment>
                           );
                         })}
