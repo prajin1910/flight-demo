@@ -1,8 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
-import { Icon } from 'leaflet';
+import { Icon, DivIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import moment from 'moment-timezone';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { MapContainer, Marker, Polyline, Popup, TileLayer } from 'react-leaflet';
 import { airports } from '../data/airports';
 
@@ -14,11 +14,13 @@ Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-const FlightPathMap = ({ flight }) => {
+const FlightPathMap = ({ flight, onSeatRecommendation }) => {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [planePosition, setPlanePosition] = useState(0);
+  const [sunPosition, setSunPosition] = useState({ angle: 0, side: 'right' });
 
   // Initialize Gemini AI
   const ai = new GoogleGenAI({
@@ -97,13 +99,142 @@ const FlightPathMap = ({ flight }) => {
     return path;
   };
 
-  // Calculate flight path
   const flightPath = useMemo(() => {
     if (departureCoords && arrivalCoords) {
       return calculateFlightPath(departureCoords, arrivalCoords);
     }
     return [];
   }, [departureCoords, arrivalCoords]);
+
+  const calculateFlightDuration = useMemo(() => {
+    return () => {
+      if (!flight?.route?.departure?.time || !flight?.route?.arrival?.time) return 0;
+      const departure = new Date(flight.route.departure.time);
+      const arrival = new Date(flight.route.arrival.time);
+      return (arrival - departure) / (1000 * 60);
+    };
+  }, [flight]);
+
+  const calculateSunPosition = useMemo(() => {
+    return (departureTime, elapsedMinutes) => {
+    const departure = new Date(departureTime);
+    const current = new Date(departure.getTime() + elapsedMinutes * 60000);
+
+    const hours = current.getHours() + current.getMinutes() / 60;
+    const sunriseHour = 6;
+    const sunsetHour = 18;
+
+    let angle = 0;
+    if (hours < sunriseHour) {
+      angle = -90 + ((hours / sunriseHour) * 90);
+    } else if (hours < 12) {
+      angle = ((hours - sunriseHour) / (12 - sunriseHour)) * 90;
+    } else if (hours < sunsetHour) {
+      angle = 90 - ((hours - 12) / (sunsetHour - 12)) * 90;
+    } else {
+      angle = -((hours - sunsetHour) / (24 - sunsetHour)) * 90;
+    }
+
+    if (!departureCoords || !arrivalCoords) return { angle, side: 'right', inSunlight: hours >= sunriseHour && hours <= sunsetHour };
+
+    const bearing = Math.atan2(
+      arrivalCoords[1] - departureCoords[1],
+      arrivalCoords[0] - departureCoords[0]
+    ) * 180 / Math.PI;
+
+    const normalizedBearing = (bearing + 360) % 360;
+    const sunAngleRelative = (angle - normalizedBearing + 360) % 360;
+
+    const side = (sunAngleRelative > 0 && sunAngleRelative < 180) ? 'left' : 'right';
+
+      return {
+        angle,
+        side,
+        inSunlight: hours >= sunriseHour && hours <= sunsetHour,
+        localTime: current.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+      };
+    };
+  }, [departureCoords, arrivalCoords]);
+
+  useEffect(() => {
+    if (!flight?.route?.departure?.time) return;
+
+    const flightDuration = calculateFlightDuration();
+    if (flightDuration <= 0) return;
+
+    const updateInterval = 100;
+    const totalSteps = 200;
+
+    let step = 0;
+    const interval = setInterval(() => {
+      step = (step + 1) % totalSteps;
+      const progress = step / totalSteps;
+      setPlanePosition(progress);
+
+      const elapsedMinutes = progress * flightDuration;
+      const sunPos = calculateSunPosition(flight.route.departure.time, elapsedMinutes);
+      setSunPosition(sunPos);
+
+      if (onSeatRecommendation && step % 20 === 0) {
+        onSeatRecommendation({
+          sunSide: sunPos.side,
+          inSunlight: sunPos.inSunlight,
+          recommendation: sunPos.inSunlight
+            ? `Window seats on the ${sunPos.side} side will have ${sunPos.side === 'left' ? 'beautiful' : 'stunning'} sun views`
+            : 'Currently in night time - both sides offer starry views'
+        });
+      }
+    }, updateInterval);
+
+    return () => clearInterval(interval);
+  }, [flight, departureCoords, arrivalCoords, onSeatRecommendation, calculateFlightDuration, calculateSunPosition]);
+
+  const getCurrentPlanePosition = () => {
+    if (!flightPath || flightPath.length === 0) return null;
+    const index = Math.floor(planePosition * (flightPath.length - 1));
+    return flightPath[index];
+  };
+
+  const calculatePlaneRotation = () => {
+    if (!flightPath || flightPath.length < 2) return 0;
+    const index = Math.floor(planePosition * (flightPath.length - 1));
+    const nextIndex = Math.min(index + 1, flightPath.length - 1);
+
+    const current = flightPath[index];
+    const next = flightPath[nextIndex];
+
+    const angle = Math.atan2(next[1] - current[1], next[0] - current[0]) * 180 / Math.PI;
+    return angle + 90;
+  };
+
+  const planeIcon = new DivIcon({
+    className: 'plane-icon',
+    html: `<div style="transform: rotate(${calculatePlaneRotation()}deg); font-size: 32px; transition: transform 0.1s linear;">✈️</div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16]
+  });
+
+  const sunIcon = new DivIcon({
+    className: 'sun-icon',
+    html: `<div style="font-size: 40px; filter: drop-shadow(0 0 10px rgba(255, 200, 0, 0.8)); animation: pulse 2s ease-in-out infinite;">${sunPosition.inSunlight ? '☀️' : '🌙'}</div>`,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20]
+  });
+
+  const getSunMapPosition = () => {
+    if (!departureCoords || !arrivalCoords) return null;
+
+    const midLat = (departureCoords[0] + arrivalCoords[0]) / 2;
+    const midLng = (departureCoords[1] + arrivalCoords[1]) / 2;
+
+    const offsetDistance = 15;
+    const angleRad = sunPosition.angle * Math.PI / 180;
+
+    const sunLat = midLat + Math.sin(angleRad) * offsetDistance;
+    const sunLng = midLng + Math.cos(angleRad) * offsetDistance;
+
+    return [sunLat, sunLng];
+  };
 
   // AI Chatbot Functions
   const isFlightRelatedQuery = (query) => {
@@ -341,12 +472,30 @@ const FlightPathMap = ({ flight }) => {
       {/* Map Container */}
       <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-lg">
         <div className="p-3 sm:p-4 border-b dark:border-gray-700">
-          <h3 className="text-base sm:text-lg font-semibold text-secondary-900 dark:text-white">
-            Flight Path
-          </h3>
-          <p className="text-xs sm:text-sm text-secondary-600 dark:text-secondary-300">
-            Interactive map showing your flight route
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base sm:text-lg font-semibold text-secondary-900 dark:text-white">
+                Live Flight Path with Sun Tracking
+              </h3>
+              <p className="text-xs sm:text-sm text-secondary-600 dark:text-secondary-300">
+                Watch the flight progress and see real-time sun position
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-medium text-secondary-900 dark:text-white">
+                {Math.round(planePosition * 100)}% Complete
+              </div>
+              <div className="text-xs text-secondary-600 dark:text-secondary-300">
+                {sunPosition.localTime}
+              </div>
+              <div className="text-xs font-medium mt-1 px-2 py-1 rounded-full inline-block" style={{
+                backgroundColor: sunPosition.side === 'left' ? '#fef3c7' : '#dbeafe',
+                color: sunPosition.side === 'left' ? '#92400e' : '#1e40af'
+              }}>
+                Sun on {sunPosition.side} side
+              </div>
+            </div>
+          </div>
         </div>
         
         <div className="h-64 sm:h-80 md:h-96 relative">
@@ -361,13 +510,42 @@ const FlightPathMap = ({ flight }) => {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             />
             
-            {/* Flight Path */}
             <Polyline
               positions={flightPath}
               color="#2563eb"
               weight={3}
               opacity={0.8}
             />
+
+            {getCurrentPlanePosition() && (
+              <Marker
+                position={getCurrentPlanePosition()}
+                icon={planeIcon}
+              >
+                <Popup>
+                  <div className="text-center">
+                    <h4 className="font-semibold">Flight Progress</h4>
+                    <p className="text-sm">{Math.round(planePosition * 100)}% Complete</p>
+                    <p className="text-xs">Current Time: {sunPosition.localTime}</p>
+                  </div>
+                </Popup>
+              </Marker>
+            )}
+
+            {getSunMapPosition() && (
+              <Marker
+                position={getSunMapPosition()}
+                icon={sunIcon}
+              >
+                <Popup>
+                  <div className="text-center">
+                    <h4 className="font-semibold">{sunPosition.inSunlight ? 'Sun Position' : 'Moon Position'}</h4>
+                    <p className="text-sm">Best views on {sunPosition.side} side</p>
+                    <p className="text-xs">Time: {sunPosition.localTime}</p>
+                  </div>
+                </Popup>
+              </Marker>
+            )}
             
             {/* Departure Airport */}
             <Marker position={departureCoords}>

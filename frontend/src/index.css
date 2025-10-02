@@ -95,6 +95,42 @@
     @apply w-full px-4 py-3 sm:px-6 sm:py-4 md:px-5 md:py-3.5 lg:px-5 lg:py-3.5 text-base sm:text-lg md:text-base lg:text-base bg-white dark:bg-secondary-800/80 border-2 border-secondary-200 dark:border-secondary-600 rounded-lg sm:rounded-xl md:rounded-lg lg:rounded-lg placeholder-secondary-500 dark:placeholder-secondary-400 text-secondary-900 dark:text-secondary-100 focus:outline-none focus:ring-4 focus:ring-primary-500/30 focus:border-primary-500 dark:focus:border-primary-400 transition-all duration-300 hover:border-secondary-300 dark:hover:border-secondary-500 backdrop-blur-sm;
   }
 
+  .plane-icon {
+    background: transparent !important;
+    border: none !important;
+  }
+
+  .sun-icon {
+    background: transparent !important;
+    border: none !important;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.1);
+      opacity: 0.9;
+    }
+  }
+
+  .seat-recommended-sun {
+    @apply ring-4 ring-yellow-400 dark:ring-yellow-600 animate-pulse;
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
+  }
+
+  .seat-recommended-shade {
+    @apply ring-4 ring-blue-400 dark:ring-blue-600;
+    box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);
+  }
+
+  .seat-recommended-aisle {
+    @apply ring-4 ring-green-400 dark:ring-green-600;
+    box-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
+  }
+
   /* Hide default calendar icons and improve date input styling */
   input[type="date"]::-webkit-calendar-picker-indicator {
     background: transparent;
