@@ -6,12 +6,10 @@ build/
 
 # Logs
 *.log
-
 # Spring Boot / Java
 target/
 *.class
 *.jar
-
 # IDE
 .vscode/
 .idea/
